@@ -1,0 +1,22 @@
+Steps:
+
+Find the QoS used by the physical interface:
+# ovs-vsctl find Port name=eth1 | grep qos
+qos : 678567ed-9f71-432b-99a2-2f28efced79c
+
+Determine which queue is being used for your virtual interface. The value after set_queue is our queue_id.
+# ovs-ofctl dump-flows xapi0 | grep 10.0.0.37 | grep "set_queue"
+... ,nw_src=10.0.0.37 actions=set_queue:13947, ...
+
+List the QoS from the first step and its type. NOTE: This command outputs every single OpenFlow queue_id/OVS Queue UUID for the physical interface. The queue_id from the previous step will be the key we’re interested in and the value is our Queue’s UUID
+# ovs-vsctl list Qos 678567ed-9f71-432b-99a2-2f28efced79c | egrep 'queues|type'
+queues : { ... 13947=787b609b-417c-459f-b9df-9fb5b362e815,... }
+type : linux-htb
+
+Use the Queue UUID from the previous step to list the Queue:
+# ovs-vsctl list Queue 787b609b-417c-459f-b9df-9fb5b362e815 | grep other_config
+other_config : {... max-rate="614400000" ...}
+
+In order to tie it back to tc-htb we have to convert the OpenFlow queue_id+1 to hexadecimal (367c). I think it’s happening here in the OVS code, but I’d love to have a definitive answer.
+# tc -s -d class show dev eth1 | grep 367c | grep ceil # Queue ID + 1 in Hex
+class htb 1:367c ... ceil 614400Kbit
